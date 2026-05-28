@@ -82,10 +82,33 @@
             }
         });
 
+        function playAlarm() {
+            if (!audioCtx) return;
+            [400, 300, 400, 300].forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const t = audioCtx.currentTime + i * 0.18;
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(freq, t);
+                gain.gain.setValueAtTime(0.4, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(t);
+                osc.stop(t + 0.15);
+            });
+        }
+
         function processCode(code) {
+            if (!/^C\d{8}$/.test(code)) {
+                playAlarm();
+                document.getElementById('last-code').innerText = '❌ 格式錯誤 / Sai định dạng：' + code;
+                document.getElementById('last-code').style.color = '#e74c3c';
+                return;
+            }
             const isDuplicate = scanLog.some(item => item.code === code);
             if (isDuplicate) {
-                playTone(150, 'square', 0.4);
+                playAlarm();
                 document.getElementById('last-code').innerText = '⚠️ 重複 / Trùng lặp：' + code;
                 document.getElementById('last-code').style.color = '#e74c3c';
                 return;
