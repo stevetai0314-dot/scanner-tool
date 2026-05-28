@@ -47,7 +47,7 @@
         const GAS_URL = 'PASTE_YOUR_WEB_APP_URL_HERE'; // 部署後填入
 
         const input = document.getElementById('barcodeInput');
-        const history = [];
+        const scanLog = [];
         let audioCtx = null;
 
         function initAudio() {
@@ -83,7 +83,7 @@
         });
 
         function processCode(code) {
-            const isDuplicate = history.some(item => item.code === code);
+            const isDuplicate = scanLog.some(item => item.code === code);
             if (isDuplicate) {
                 playTone(150, 'square', 0.4);
                 document.getElementById('last-code').innerText = '⚠️ 重複 / Trùng lặp：' + code;
@@ -96,15 +96,15 @@
             const dateStr = now.getFullYear() + '-' +
                 String(now.getMonth() + 1).padStart(2, '0') + '-' +
                 String(now.getDate()).padStart(2, '0');
-            history.unshift({ code, time: timeStr, date: dateStr });
+            scanLog.unshift({ code, time: timeStr, date: dateStr });
             document.getElementById('last-code').innerText = '✅ 已讀取 / Đã quét：' + code;
             document.getElementById('last-code').style.color = '#2ecc71';
             updateUI();
         }
 
         function updateUI() {
-            document.getElementById('total-count').innerText = history.length;
-            document.getElementById('logs').innerHTML = history.slice(0, 5).map(item => `
+            document.getElementById('total-count').innerText = scanLog.length;
+            document.getElementById('logs').innerHTML = scanLog.slice(0, 5).map(item => `
                 <div class="item">
                     <span>${item.code}</span>
                     <span style="color:#bdc3c7;font-size:14px">${item.time}</span>
@@ -115,12 +115,18 @@
         async function postToGAS(payload) {
             const statusEl = document.getElementById('last-code');
             try {
+                if (!GAS_URL || GAS_URL.startsWith('PASTE_')) {
+                    statusEl.innerText = '⚠️ 尚未設定雲端連結 / Chưa cấu hình GAS URL';
+                    statusEl.style.color = '#e74c3c';
+                    return;
+                }
                 const res = await fetch(GAS_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain' },
                     body: JSON.stringify(payload)
                 });
-                if (res.ok) {
+                const text = await res.text();
+                if (res.ok && text === 'OK') {
                     statusEl.innerText = '✅ 已同步至雲端 / Đã đồng bộ lên đám mây';
                     statusEl.style.color = '#2ecc71';
                 } else {
@@ -134,7 +140,9 @@
         }
 
         async function exportAll() {
-            if (history.length === 0) return;
+            if (scanLog.length === 0) return;
+            const btn = document.querySelector('.btn-save');
+            btn.disabled = true;
             const now = new Date();
             const dateStr = now.getFullYear() + '-' +
                 String(now.getMonth() + 1).padStart(2, '0') + '-' +
@@ -144,7 +152,7 @@
                 String(now.getMinutes()).padStart(2, '0');
 
             let content = '﻿序號,日期,時間,條碼內容\n';
-            [...history].reverse().forEach((item, index) => {
+            [...scanLog].reverse().forEach((item, index) => {
                 content += `${index + 1},${item.date},${item.time},"${item.code}"\n`;
             });
             const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
@@ -153,9 +161,9 @@
             a.href = url;
             a.download = dateStr + '_掃描結果.csv';
             a.click();
-            URL.revokeObjectURL(url);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-            const payload = [...history].reverse().map((item, index) => ({
+            const payload = [...scanLog].reverse().map((item, index) => ({
                 seq: index + 1,
                 date: item.date,
                 time: item.time,
@@ -163,11 +171,12 @@
                 batch: batchStr
             }));
             await postToGAS(payload);
+            btn.disabled = false;
         }
 
         function clearAll() {
             if (confirm('確定要清空所有紀錄嗎？\nBạn có chắc muốn xóa tất cả?')) {
-                history.length = 0;
+                scanLog.length = 0;
                 document.getElementById('last-code').innerText = '等待掃描... / Đang chờ quét...';
                 document.getElementById('last-code').style.color = '#fff';
                 updateUI();
